@@ -1,0 +1,2 @@
+C:\windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /out:"build/app.exe" main2.cs /resource:Microsoft.Web.WebView2.Core.dll  /resource:Microsoft.Web.WebView2.WinForms.dll /resource:WebView2Loader.dll
+build\app.exe
