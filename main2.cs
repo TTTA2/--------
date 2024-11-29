@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Resources;
 using System.Drawing;
+using System.Runtime.InteropServices;
 
 public class Program
 {
@@ -17,6 +18,48 @@ public class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new MainForm());
+    }
+}
+
+using System.Runtime.InteropServices;
+
+public abstract class BaseDllClass : IDisposable
+{
+    [DllImport("kernel32")]
+    private static extern IntPtr LoadLibrary(string dllFilePath);
+
+    [DllImport("kernel32")]
+    private static extern IntPtr GetProcAddress(IntPtr module, string functionName);
+
+    [DllImport("kernel32")]
+    private static extern bool FreeLibrary(IntPtr module);
+
+    private IntPtr _dllPtr;
+
+    public BaseDllClass(string dllFilePath)
+    {
+        if (!File.Exists(dllFilePath))
+            throw new Exception("Not found dll.");
+        // DLLのロード
+        _dllPtr = LoadLibrary(dllFilePath);
+        if (_dllPtr == IntPtr.Zero)
+            throw new Exception("Failed load dll.");
+    }
+
+    protected T LoadFunction<T>(string functionName)
+    {
+        // 関数ポインタを取得
+        IntPtr functionPtr = GetProcAddress(_dllPtr, functionName);
+　　　　 if (functionPtr == IntPtr.Zero)
+            throw new Exception("function not found.");
+
+        // 関数ポインタをdelegateに変換する
+        return (T)(object)Marshal.GetDelegateForFunctionPointer(functionPtr, typeof(T));
+    }
+    
+    public void Dispose()
+    {
+        FreeLibrary(_dllPtr);
     }
 }
 
@@ -36,7 +79,7 @@ public class EmbeddedWebView2 {
     private const string webView2CoreEnvironmentOptionClass = "Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions";
     private const string webView2Type = "Microsoft.Web.WebView2.WinForms.WebView2";
 
-    
+    private const string webView2CoreWebView2CreationPropertiesClass = "Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties";
 
     public EmbeddedWebView2() {
 
@@ -54,7 +97,7 @@ public class EmbeddedWebView2 {
                 LibraryName = "Microsoft.Web.WebView2.WinForms.dll",
                 TypeNames = new string[] {
                     webView2Type,
-                    "Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties",
+                    webView2CoreWebView2CreationPropertiesClass,
                 }
             }
         });
@@ -84,7 +127,7 @@ public class EmbeddedWebView2 {
 
             var parameters = createAsync.GetParameters();
 
-            Task environment = (Task)(createAsync.Invoke(null, new object[] { null, userfolder, parameters[2].DefaultValue }));
+            Task environment = (Task)(createAsync.Invoke(null, new object[] { null, null, parameters[2].DefaultValue }));
             await environment;
             dynamic property = environment.GetType().GetProperty("Result");
             dynamic value = property.GetValue(environment);
@@ -96,9 +139,8 @@ public class EmbeddedWebView2 {
     }
 
     public dynamic CreateProp() {
-
         string userfolder = Path.Combine(Path.GetTempPath(), "webv2cache");
-        dynamic prop = Activator.CreateInstance(types["Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties"]);
+        dynamic prop = Activator.CreateInstance(types[webView2CoreWebView2CreationPropertiesClass]);
         prop.UserDataFolder = userfolder;
         return prop;
     }
@@ -113,9 +155,22 @@ public class EmbeddedWebView2 {
 
         // Console.WriteLine(constr);
 
+        // dynamic env = await CreateEnvironment();
+
+        
+        MethodInfo SetLoaderDllFolderPath = types[webView2CoreEnvironmentClass].GetMethod(
+        "SetLoaderDllFolderPath", BindingFlags.Static | BindingFlags.Public);
+
+        dynamic env = await CreateEnvironment();
+
         dynamic webView2 = Activator.CreateInstance(types[webView2Type]);
         webView2.CreationProperties = this.CreateProp();
-        await webView2.EnsureCoreWebView2Async(null);
+
+
+
+        await webView2.EnsureCoreWebView2Async(env);
+
+        SetLoaderDllFolderPath.Invoke(null, new object[] { @"C:\Users\nanas\Downloads\新しいフォルダー (2)" });
 
         return webView2;
 
