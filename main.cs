@@ -7,53 +7,104 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Resources;
+using System.Drawing;
+using System.Runtime.InteropServices;
+using Microsoft.Web.WebView2.WinForms;
+using Microsoft.Web.WebView2.Core;
 
 public class Program
 {
-    static void Main(string[] args)
+    [STAThread]
+    static void Main()
     {
-        // MainForm f = new MainForm();
-        // f.Show();
+        AssemblyHelper helper = new AssemblyHelper();
 
-        Assembly  asm = Assembly.LoadFrom("Microsoft.Web.WebView2.Core.dll");
-
-        using (var resx = new ResXResourceWriter("test.resx")) {
-			resx.AddResource("test", asm);	
-			// resx.AddResource("key2", "value2");	
-			// resx.AddResource("key3", "value3");
-			// ...
-		}
-
-        // Assembly exasm = Assembly.GetExecutingAssembly();
-        // Stream dllstrm = exasm.GetManifestResourceStream("WebView2Test.Resources.value1");
-
-        // int dlllen = (int)dllstrm.Length;
-        // BinaryReader dllbr = new BinaryReader(dllstrm);
-
-        // Console.WriteLine(dlllen);
-
-        // Assembly zipasm = Assembly.Load(dllbr.ReadBytes(dlllen));
-        // Type a = zipasm.GetType("Microsoft.Web.WebView2.Core.CoreWebView2");
-
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Application.Run(new MainForm());
     }
 }
 
-public class MainForm: Form
-{
-    public MainForm()
-    {
-        // Assembly exasm = Assembly.GetExecutingAssembly();
-        // Stream dllstrm = exasm.GetManifestResourceStream("WebView2Test.Resources.Microsoft.Web.WebView2.Core.dll");
+public class AssemblyHelper {
 
-        // int dlllen = (int)dllstrm.Length;
-        // BinaryReader dllbr = new BinaryReader(dllstrm);
+    public AssemblyHelper() {
+        AppDomain.CurrentDomain.AssemblyResolve += OnResolveAssembly;
+    }
 
-        // Assembly zipasm = Assembly.Load(dllbr.ReadBytes(dlllen));
-        // Type a = zipasm.GetType("Microsoft.Web.WebView2.Core.CoreWebView2");
+    private static Assembly OnResolveAssembly(object sender, ResolveEventArgs args) {
+        
+        string name = new AssemblyName(args.Name).Name;
+        Assembly loadedAsm = GetLoadAssembly(name + ".dll");
+        return loadedAsm;
+    }
 
+    public static string GetEmbeddedString(string name) {
 
+        Assembly asm = Assembly.GetExecutingAssembly();
 
-        //this.webView2.EnsureCoreWebView2Async(null);
+        using (Stream stream = asm.GetManifestResourceStream(name)) {
+            using (StreamReader text = new StreamReader (stream)) {
+                return text.ReadToEnd();
+            }
+        }
+    }
 
+    public static void EmbeddedAssemblyCopyTo(string dllName, string path) {
+        Assembly asm = Assembly.GetExecutingAssembly();
+
+        using (Stream stream = asm.GetManifestResourceStream(dllName)) {
+            using (FileStream fileStream = new FileStream(path, FileMode.Create)) {
+                stream.CopyTo(fileStream);
+            }
+        }
+    }
+
+    private static Assembly GetLoadAssembly(string name) {
+        Assembly asm = Assembly.GetExecutingAssembly();
+
+        using (Stream stream = asm.GetManifestResourceStream(name)) {
+            using (BinaryReader binary = new BinaryReader(stream)) {
+                int length = (int)stream.Length;
+                Assembly loadAsm = Assembly.Load(binary.ReadBytes(length));
+                return loadAsm;
+            }
+        }
+
+        return null;
+    }
+}
+
+public class MainForm: Form {
+
+    private dynamic webView2;
+
+    public MainForm() {
+        this.Load += MainForm_Load;
+        this.BackColor = Color.White;  
+    }
+
+    public async void MainForm_Load(object sender, EventArgs e) {        
+
+        const string Loaderdll = "WebView2Loader.dll";
+
+        string userfolder = Path.Combine(Path.GetTempPath(), "webv2cache");
+        AssemblyHelper.EmbeddedAssemblyCopyTo(Loaderdll, Path.Combine(userfolder, Loaderdll));
+
+        WebView2 webView2 = new WebView2();
+
+        CoreWebView2Environment.SetLoaderDllFolderPath(userfolder);
+        CoreWebView2Environment environment = await CoreWebView2Environment.CreateAsync(null, userfolder);
+        await webView2.EnsureCoreWebView2Async(environment);
+
+        if (webView2 != null) {
+
+            webView2.Dock = DockStyle.Fill;
+            this.Controls.Add(webView2);
+
+            string source = AssemblyHelper.GetEmbeddedString("app.html");
+            webView2.CoreWebView2.NavigateToString(source);
+
+            // webView2.CoreWebView2.Navigate("https://www.google.co.jp/");
+        }
     }
 }
