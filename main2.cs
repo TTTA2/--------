@@ -29,46 +29,105 @@ public class EmbeddedWebView2 {
 
     private Dictionary<string, Type> types;
 
+    private const string WebView2CoreAssemblyName = "Microsoft.Web.WebView2.Core";
     private const string WebView2CoreDllName = "Microsoft.Web.WebView2.Core.dll";
 
+    private const string webView2CoreEnvironmentClass = "Microsoft.Web.WebView2.Core.CoreWebView2Environment";
+    private const string webView2CoreEnvironmentOptionClass = "Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions";
     private const string webView2Type = "Microsoft.Web.WebView2.WinForms.WebView2";
+
+    
 
     public EmbeddedWebView2() {
 
         AppDomain.CurrentDomain.AssemblyResolve += SearchAssemblyFromDirectories;
 
         this.types = GetTypeFromResoucesLibraryFileNames(new AssemblyTypeSet[] {
-
-            // new AssemblyTypeSet() {
-            //     LibraryName = "Microsoft.Web.WebView2.Core.dll",
-            //     TypeNames = new string[] {
-            //         "Microsoft.Web.WebView2.Core.CoreWebView2"
-            //     }
-            // },
-
+            new AssemblyTypeSet() {
+                LibraryName = WebView2CoreDllName,
+                TypeNames = new string[] {
+                    webView2CoreEnvironmentClass,
+                    webView2CoreEnvironmentOptionClass,
+                }
+            },
             new AssemblyTypeSet() {
                 LibraryName = "Microsoft.Web.WebView2.WinForms.dll",
                 TypeNames = new string[] {
                     webView2Type,
+                    "Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties",
                 }
             }
         });
-
-        Console.WriteLine(types.Count);
-        Console.WriteLine(types[webView2Type].ToString());
     }
 
-    public dynamic Create() {
+    public async Task<dynamic> CreateEnvironment() {
 
-        // if (types[webView2Type] == null) MessageBox.Show("test");
-                    // Console.WriteLine("OK");
+        string userfolder = Path.Combine(Path.GetTempPath(), "webv2cache");
+
+        // MethodInfo createAsync = 
+        //     types[webView2CoreEnvironmentClass].GetMethod(
+        //         "CreateAsync", 
+        //         null,
+        //         BindingFlags.Static | BindingFlags.Public, new Type[] {
+        //         typeof(string),
+        //         },
+        //         null
+        //     );
+
+        Type e = types[webView2CoreEnvironmentOptionClass];
+
+        MethodInfo createAsync = 
+            types[webView2CoreEnvironmentClass].GetMethod(
+                "CreateAsync", BindingFlags.Static | BindingFlags.Public, null, new Type[] { typeof(string), typeof(string), e }, null );
+
+       if (createAsync != null) {
+
+            var parameters = createAsync.GetParameters();
+
+            Task environment = (Task)(createAsync.Invoke(null, new object[] { null, userfolder, parameters[2].DefaultValue }));
+            await environment;
+            dynamic property = environment.GetType().GetProperty("Result");
+            dynamic value = property.GetValue(environment);
+
+            return value;
+       }
+
+       return null;
+    }
+
+    public dynamic CreateProp() {
+
+        string userfolder = Path.Combine(Path.GetTempPath(), "webv2cache");
+        dynamic prop = Activator.CreateInstance(types["Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties"]);
+        prop.UserDataFolder = userfolder;
+        return prop;
+    }
+    
+    public async Task<dynamic> Create() {
+
+        // MethodInfo createAsync = 
+            // types[webView2CoreEnvironmentClass].GetMethod(
+                // "CreateAsync", BindingFlags.Static | BindingFlags.Public, null, new Type[] { typeof(string), typeof(string), e }, null );
+
+        // MethodInfo constr = types[webView2CoreEnvironmentClass].GetConstructor(new Type[]);
+
+        // Console.WriteLine(constr);
+
         dynamic webView2 = Activator.CreateInstance(types[webView2Type]);
+        webView2.CreationProperties = this.CreateProp();
+        await webView2.EnsureCoreWebView2Async(null);
+
         return webView2;
+
+        // dynamic webView2Environment = await Activator.CreateInstance(types[webView2CoreEnvironmentType])
+        // webView2Environment.method("CreateAsync", null, userfolder);
+	    // object ret = method.Invoke(obj, new string[] { "abc", "def" });
+                        //    .CoreWebView2Environment.CreateAsync(null, userfolder);
     }
 
-    private static Assembly SearchAssemblyFromDirectories(object sender, ResolveEventArgs e)
-    {
-        if (e.Name.Contains("Microsoft.Web.WebView2.Core")) return GetLoadAssembly(WebView2CoreDllName);
+    private static Assembly SearchAssemblyFromDirectories(object sender, ResolveEventArgs e) {
+        if (e.Name.Contains(WebView2CoreAssemblyName)) return GetLoadAssembly(WebView2CoreDllName);
+        Console.WriteLine("Search:" + e.Name);
         return null;
     }
 
@@ -78,10 +137,8 @@ public class EmbeddedWebView2 {
 
         using (Stream stream = asm.GetManifestResourceStream(name)) {
             using (BinaryReader binary = new BinaryReader(stream)) {
-
                 int length = (int)stream.Length;
                 Assembly loadAsm = Assembly.Load(binary.ReadBytes(length));
-
                 return loadAsm;
             }
         }
@@ -129,13 +186,15 @@ public class MainForm: Form {
     public async void MainForm_Load(object sender, EventArgs e) {        
 
         EmbeddedWebView2 embeddedWebView2 = new EmbeddedWebView2();
-        webView2 = embeddedWebView2.Create();
-        webView2.Dock = DockStyle.Fill;
-        
-        await webView2.EnsureCoreWebView2Async(null);
+        webView2 = await embeddedWebView2.Create();
 
-        this.Controls.Add(webView2);
+        if (webView2 != null) {
 
-        webView2.CoreWebView2.Navigate("https://www.google.co.jp/");
+            webView2.Dock = DockStyle.Fill;
+            this.Controls.Add(webView2);
+            webView2.CoreWebView2.Navigate("https://www.google.co.jp/");
+        }
+
+        Console.WriteLine(webView2 != null);
     }
 }
