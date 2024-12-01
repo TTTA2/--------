@@ -83,8 +83,10 @@ public class MainForm: Form {
         this.BackColor = Color.White;  
     }
 
-    public async void MainForm_Load(object sender, EventArgs e) {        
+    public CoreWebView2Environment environment;
 
+    public async void MainForm_Load(object sender, EventArgs e) {
+        
         const string Loaderdll = "WebView2Loader.dll";
 
         string userfolder = Path.Combine(Path.GetTempPath(), "webv2cache");
@@ -92,19 +94,64 @@ public class MainForm: Form {
 
         WebView2 webView2 = new WebView2();
 
+        webView2.NavigationCompleted += NavigationCompleted;
+        webView2.CoreWebView2InitializationCompleted += CoreWebView2InitializationCompleted;
+
+
         CoreWebView2Environment.SetLoaderDllFolderPath(userfolder);
-        CoreWebView2Environment environment = await CoreWebView2Environment.CreateAsync(null, userfolder);
+        environment = await CoreWebView2Environment.CreateAsync(null, userfolder);
+
         await webView2.EnsureCoreWebView2Async(environment);
+
+        webView2.CoreWebView2.WebResourceRequested += WebResourceRequested;
 
         if (webView2 != null) {
 
             webView2.Dock = DockStyle.Fill;
             this.Controls.Add(webView2);
-
             string source = AssemblyHelper.GetEmbeddedString("app.html");
-            webView2.CoreWebView2.NavigateToString(source);
+            // webView2.CoreWebView2.NavigateToString(source);
+            webView2.CoreWebView2.Navigate(@"app.html");
+
 
             // webView2.CoreWebView2.Navigate("https://www.google.co.jp/");
         }
+    }
+// CoreWebView2NavigationCompletedEventArgs> NavigationCompleted
+
+
+    public void WebResourceRequested(object sender, CoreWebView2WebResourceRequestedEventArgs args) {
+        Console.WriteLine(args.Request.Uri);
+
+
+    }
+
+    public void NavigationCompleted(object sender, CoreWebView2NavigationCompletedEventArgs args) {
+
+        WebView2 wv = (WebView2)sender;
+
+        Console.WriteLine("test");
+
+        CoreWebView2FileSystemHandle  a = environment.CreateWebFileSystemDirectoryHandle(@"C:\", CoreWebView2FileSystemHandlePermission.ReadOnly);
+        // Console.WriteLine(a.Kind);
+
+        List<object> test = new List<object>() { a };
+
+        // wv.CoreWebView2.postMessageWithAdditionalObjects("test", null);
+        string jsonMessage = "{ \"action\": \"greet\", \"message\": \"Hello from host!\" }";
+
+        wv.CoreWebView2.PostWebMessageAsJson(jsonMessage, test);
+
+
+    }
+
+    public void CoreWebView2InitializationCompleted(object sender, CoreWebView2InitializationCompletedEventArgs args) {
+
+        WebView2 wv = (WebView2)sender;
+
+        Console.WriteLine("bbbbbb");
+
+        // var a = environment.CreateWebFileSystemDirectoryHandle(@"C:\Users\nanas\Downloads\新しいフォルダー (2)", CoreWebView2FileSystemHandlePermission.ReadOnly);
+
     }
 }
